@@ -1,158 +1,160 @@
 "use client"
 
-import { Card } from "@/components/ui/card"
-import { Users, Crown, UserPlus, UserMinus } from "lucide-react"
 import { useState, useEffect } from "react"
+import { Card } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Users, Crown, UserPlus, UserMinus, Settings } from "lucide-react"
+import { socketService } from "@/lib/socket-client"
 
-interface User {
-  id: string
+export interface User {
+  id?: string // Make id optional since it might not always be present
   name: string
   avatar: string
-  vibe: string
-  lastReaction: string
-  joinedAt: number
+  vibe?: string
   isHost: boolean
+  joinedAt: string
+  socketId?: string
+  lastReaction?: string
 }
 
-interface ConnectionIndicatorsProps {
+interface Room {
+  _id: string
+  name: string
+  hostId: string
   users: User[]
-  currentUser: string
+  isActive: boolean
+  createdAt: string
+}
+
+interface RealConnectionIndicatorsProps {
   roomId: string
+  currentUser: string
+  users?: User[] // Add users prop as optional
   onUserUpdate?: (users: User[]) => void
 }
 
-const vibeColors = {
-  chill: "from-blue-400 to-purple-400",
-  energetic: "from-orange-400 to-red-400",
-  dreamy: "from-purple-400 to-pink-400",
-  focused: "from-green-400 to-blue-400",
-  excited: "from-yellow-400 to-orange-400",
-  relaxed: "from-indigo-400 to-blue-400",
-}
-
-// This would be replaced with real WebSocket/API calls
-class RoomService {
-  private listeners: ((users: User[]) => void)[] = []
-  private users: User[] = []
-
-  // Simulate WebSocket connection
-  connect(roomId: string, currentUser: string) {
-    console.log(`🔌 Connected to room ${roomId} as ${currentUser}`)
-
-    // In real app: ws://your-server.com/rooms/${roomId}
-    // const ws = new WebSocket(`ws://localhost:3001/rooms/${roomId}`)
-
-    return {
-      // Simulate receiving user updates
-      onUserJoined: (callback: (user: User) => void) => {
-        // In real app: ws.addEventListener('user-joined', callback)
-        console.log("👂 Listening for user joins...")
-      },
-
-      onUserLeft: (callback: (userId: string) => void) => {
-        // In real app: ws.addEventListener('user-left', callback)
-        console.log("👂 Listening for user leaves...")
-      },
-
-      onUserUpdate: (callback: (users: User[]) => void) => {
-        // In real app: ws.addEventListener('users-updated', callback)
-        this.listeners.push(callback)
-      },
-
-      // Send user join event
-      joinRoom: (user: User) => {
-        // In real app: ws.send(JSON.stringify({ type: 'join', user }))
-        this.users.push(user)
-        this.notifyListeners()
-        console.log(`✅ ${user.name} joined room ${roomId}`)
-      },
-
-      // Send user leave event
-      leaveRoom: (userId: string) => {
-        // In real app: ws.send(JSON.stringify({ type: 'leave', userId }))
-        this.users = this.users.filter((u) => u.id !== userId)
-        this.notifyListeners()
-        console.log(`❌ User ${userId} left room ${roomId}`)
-      },
-
-      disconnect: () => {
-        // In real app: ws.close()
-        console.log(`🔌 Disconnected from room ${roomId}`)
-      },
-    }
-  }
-
-  private notifyListeners() {
-    this.listeners.forEach((listener) => listener([...this.users]))
-  }
-
-  // Get current room users (API call)
-  async getRoomUsers(roomId: string): Promise<User[]> {
-    // In real app: fetch(`/api/rooms/${roomId}/users`)
-    console.log(`📡 Fetching users for room ${roomId}`)
-    return this.users
-  }
-}
-
-const roomService = new RoomService()
-
-export function ConnectionIndicators({
-  users: initialUsers,
-  currentUser,
+export function RealConnectionIndicators({
   roomId,
+  currentUser,
+  users: propUsers = [], // Accept users from props with default empty array
   onUserUpdate,
-}: ConnectionIndicatorsProps) {
-  const [users, setUsers] = useState<User[]>(initialUsers)
+}: RealConnectionIndicatorsProps) {
+  const [room, setRoom] = useState<Room | null>(null)
+  const [users, setUsers] = useState<User[]>(propUsers) // Initialize with prop users
+  const [isHost, setIsHost] = useState(false)
   const [recentJoins, setRecentJoins] = useState<string[]>([])
   const [recentLeaves, setRecentLeaves] = useState<string[]>([])
+  const [showHostControls, setShowHostControls] = useState(false)
+
+  // Update local users when prop users change
+  useEffect(() => {
+    if (propUsers.length > 0) {
+      setUsers(propUsers)
+    }
+  }, [propUsers])
 
   useEffect(() => {
-    // Connect to real-time room updates
-    const connection = roomService.connect(roomId, currentUser)
+    // Connect to socket
+    const socket = socketService.connect()
 
-    // Listen for real user joins (from shared links)
-    connection.onUserJoined((newUser: User) => {
-      setUsers((prev) => {
-        const updated = [...prev, newUser]
-        onUserUpdate?.(updated)
-        return updated
-      })
+    // Join the room
+    socketService.joinRoom(roomId, currentUser)
+
+    // Listen for room joined event
+    socketService.onRoomJoined((data) => {
+      console.log("🏠 Room joined:", data)
+      setRoom(data.room)
+
+      // Ensure users have proper structure with fallback IDs
+      const usersWithIds = (data.room.users || []).map((user: any, index: number) => ({
+        ...user,
+        id: user.id || user.name || `user-${index}`, // Fallback ID generation
+      }))
+
+      setUsers(usersWithIds)
+      setIsHost(data.isHost)
+      onUserUpdate?.(usersWithIds)
+    })
+
+    // Listen for user joined
+    socketService.onUserJoined((data) => {
+      console.log("👤 User joined:", data.user.name)
+      setRoom(data.room)
+
+      // Ensure users have proper structure with fallback IDs
+      const usersWithIds = (data.room.users || []).map((user: any, index: number) => ({
+        ...user,
+        id: user.id || user.name || `user-${index}`,
+      }))
+
+      setUsers(usersWithIds)
+      onUserUpdate?.(usersWithIds)
 
       // Show join notification
-      setRecentJoins((prev) => [...prev, newUser.name])
+      setRecentJoins((prev) => [...prev, data.user.name])
       setTimeout(() => {
-        setRecentJoins((prev) => prev.filter((name) => name !== newUser.name))
+        setRecentJoins((prev) => prev.filter((name) => name !== data.user.name))
       }, 5000)
     })
 
-    // Listen for user leaves
-    connection.onUserLeft((userId: string) => {
-      setUsers((prev) => {
-        const userLeaving = prev.find((u) => u.id === userId)
-        if (userLeaving) {
-          setRecentLeaves((prevLeaves) => [...prevLeaves, userLeaving.name])
-          setTimeout(() => {
-            setRecentLeaves((prevLeaves) => prevLeaves.filter((name) => name !== userLeaving.name))
-          }, 3000)
-        }
+    // Listen for user left
+    socketService.onUserLeft((data) => {
+      console.log("👋 User left:", data.userName)
 
-        const updated = prev.filter((u) => u.id !== userId)
-        onUserUpdate?.(updated)
-        return updated
-      })
+      // Show leave notification
+      setRecentLeaves((prev) => [...prev, data.userName])
+      setTimeout(() => {
+        setRecentLeaves((prev) => prev.filter((name) => name !== data.userName))
+      }, 3000)
+
+      // Update users list (will be updated by room update event)
     })
 
-    // Listen for general user updates
-    connection.onUserUpdate((updatedUsers: User[]) => {
-      setUsers(updatedUsers)
-      onUserUpdate?.(updatedUsers)
+    // Listen for host transfer
+    socketService.onHostTransferred((data) => {
+      console.log("👑 Host transferred:", data)
+
+      if (data.newHost === currentUser) {
+        setIsHost(true)
+      } else if (data.oldHost === currentUser) {
+        setIsHost(false)
+      }
+
+      // Update users list to reflect new host status
+      setUsers((prevUsers) =>
+        prevUsers.map((user) => ({
+          ...user,
+          isHost: user.name === data.newHost,
+        })),
+      )
     })
 
-    // Cleanup on unmount
+    // Listen for room updates
+    socketService.onRoomUpdated((updatedRoom) => {
+      setRoom(updatedRoom)
+
+      // Ensure users have proper structure with fallback IDs
+      const usersWithIds = (updatedRoom.users || []).map((user: any, index: number) => ({
+        ...user,
+        id: user.id || user.name || `user-${index}`,
+      }))
+
+      setUsers(usersWithIds)
+      onUserUpdate?.(usersWithIds)
+    })
+
     return () => {
-      connection.disconnect()
+      // Don't disconnect here - let the parent component handle it
     }
-  }, [roomId, currentUser, onUserUpdate])
+  }, [roomId, currentUser, onUserUpdate, propUsers])
+
+  // Rest of the component remains the same...
+  const transferHost = (newHostName: string) => {
+    if (isHost) {
+      socketService.transferHost(newHostName)
+      setShowHostControls(false)
+    }
+  }
 
   const getVibeIntensity = (userCount: number) => {
     if (userCount >= 8) return { level: "LEGENDARY", color: "text-yellow-400", emoji: "🔥" }
@@ -169,42 +171,73 @@ export function ConnectionIndicators({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
           <Users className="w-5 h-5 text-purple-300" />
-          <h3 className="text-purple-200 font-medium">Vibe Check</h3>
+          <h3 className="text-purple-200 font-medium">Live Room</h3>
         </div>
         <div className="flex items-center space-x-2">
           <span className="text-lg">{vibeData.emoji}</span>
           <span className={`text-sm font-bold ${vibeData.color}`}>{vibeData.level}</span>
+          {isHost && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowHostControls(!showHostControls)}
+              className="text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10"
+            >
+              <Settings className="w-4 h-4" />
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* User Count Stats */}
+      {/* Host Controls */}
+      {isHost && showHostControls && (
+        <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+          <h4 className="font-medium text-yellow-300 mb-2">👑 Host Controls</h4>
+          <div className="space-y-2">
+            {users
+              .filter((user) => !user.isHost)
+              .map((user) => (
+                <div key={user.id || user.name} className="flex items-center justify-between">
+                  <span className="text-sky-200 text-sm">{user.name}</span>
+                  <Button
+                    size="sm"
+                    onClick={() => transferHost(user.name)}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-black text-xs"
+                  >
+                    Make Host
+                  </Button>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Room Stats */}
       <div className="mb-4 p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
         <div className="flex items-center justify-between">
           <div className="text-center">
             <div className="text-2xl font-bold text-white">{users.length}</div>
-            <div className="text-xs text-purple-400">Total Listeners</div>
+            <div className="text-xs text-purple-400">Total Users</div>
           </div>
           <div className="text-center">
             <div className="text-2xl font-bold text-green-400">
-              {users.filter((u) => Date.now() - u.joinedAt < 300000).length}
+              {users.filter((u) => Date.now() - new Date(u.joinedAt).getTime() < 300000).length}
             </div>
             <div className="text-xs text-purple-400">Active (5min)</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-blue-400">{recentJoins.length}</div>
-            <div className="text-xs text-purple-400">Just Joined</div>
+            <div className="text-2xl font-bold text-yellow-400">1</div>
+            <div className="text-xs text-purple-400">Host</div>
           </div>
         </div>
       </div>
 
-      {/* Real-time Join/Leave Notifications */}
+      {/* Real-time Notifications */}
       {recentJoins.length > 0 && (
         <div className="mb-3 p-2 bg-green-500/10 border border-green-500/20 rounded-lg animate-pulse">
           <div className="flex items-center space-x-2">
             <UserPlus className="w-4 h-4 text-green-400" />
-            <span className="text-green-300 text-sm">
-              {recentJoins.slice(-2).join(", ")} joined via shared link! 🎉
-            </span>
+            <span className="text-green-300 text-sm">{recentJoins.slice(-2).join(", ")} joined the room! 🎉</span>
           </div>
         </div>
       )}
@@ -218,20 +251,17 @@ export function ConnectionIndicators({
         </div>
       )}
 
-      {/* Users List - Real people who joined */}
+      {/* Users List */}
       <div className="space-y-3 max-h-64 overflow-y-auto">
         {users.map((user) => (
           <div
-            key={user.id}
+            key={user.id || user.name}
             className="flex items-center space-x-3 group hover:bg-white/5 p-2 rounded-lg transition-colors"
           >
             <div className="relative">
-              <div
-                className={`w-10 h-10 rounded-full bg-gradient-to-r ${vibeColors[user.vibe as keyof typeof vibeColors]} flex items-center justify-center text-lg animate-pulse`}
-              >
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center text-lg">
                 {user.avatar}
               </div>
-              <div className="absolute -bottom-1 -right-1 text-sm">{user.lastReaction}</div>
               {user.isHost && (
                 <div className="absolute -top-1 -left-1 w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center">
                   <Crown className="w-2 h-2 text-white" />
@@ -245,25 +275,23 @@ export function ConnectionIndicators({
                 {user.name === currentUser && (
                   <span className="text-xs bg-purple-500 text-white px-2 py-1 rounded-full">You</span>
                 )}
-                {user.isHost && user.name !== currentUser && (
-                  <span className="text-xs bg-yellow-500 text-white px-2 py-1 rounded-full">Host</span>
+                {user.isHost && (
+                  <span className="text-xs bg-yellow-500 text-white px-2 py-1 rounded-full">
+                    {user.name === currentUser ? "Host (You)" : "Host"}
+                  </span>
                 )}
-                {user.isHost && user.name === currentUser && (
-                  <span className="text-xs bg-yellow-500 text-white px-2 py-1 rounded-full">Host (You)</span>
-                )}
-                {Date.now() - user.joinedAt < 60000 && (
+                {Date.now() - new Date(user.joinedAt).getTime() < 60000 && (
                   <span className="text-xs bg-green-500 text-white px-2 py-1 rounded-full animate-pulse">New</span>
                 )}
               </div>
-              <div className="text-sm text-purple-300 capitalize">{user.vibe} vibes</div>
-            </div>
-
-            <div className="text-xs text-purple-400">
-              {Date.now() - user.joinedAt < 60000
-                ? "Just now"
-                : Date.now() - user.joinedAt < 300000
-                  ? `${Math.floor((Date.now() - user.joinedAt) / 60000)}m ago`
-                  : "Active"}
+              <div className="text-sm text-purple-300">
+                {user.isHost ? "Room Host" : "Guest"} •{" "}
+                {Date.now() - new Date(user.joinedAt).getTime() < 60000
+                  ? "Just now"
+                  : Date.now() - new Date(user.joinedAt).getTime() < 300000
+                    ? `${Math.floor((Date.now() - new Date(user.joinedAt).getTime()) / 60000)}m ago`
+                    : "Active"}
+              </div>
             </div>
           </div>
         ))}
@@ -275,18 +303,12 @@ export function ConnectionIndicators({
           <div className="inline-flex items-center space-x-2 text-purple-300">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
             <span className="text-sm">
-              {users.length === 1
-                ? "Share the link to invite friends!"
-                : users.length < 4
-                  ? "Small group vibing"
-                  : users.length < 8
-                    ? "Great crowd energy!"
-                    : "Epic vibe session! 🔥"}
+              {room?.hostId === currentUser ? "You're hosting this room!" : `Hosted by ${room?.hostId}`}
             </span>
           </div>
 
           <div className="mt-2 text-xs text-purple-400">
-            Room {roomId} • {users.length} listening • Share to grow the vibe!
+            Room {roomId} • {users.length} connected • Real-time sync active
           </div>
         </div>
       </div>

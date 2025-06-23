@@ -4,18 +4,18 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { ConnectionIndicators } from "@/components/connection-indicators"
+import { RealConnectionIndicators, User } from "@/components/connection-indicators"
 
 // Demo component showing how real users would join
 export function RealTimeDemo() {
-  const [users, setUsers] = useState([
+  const [users, setUsers] = useState<User[]>([
     {
       id: "1",
       name: "Jordan", // Use actual name instead of "You"
       avatar: "🌟",
       vibe: "excited",
       lastReaction: "🎵",
-      joinedAt: Date.now() - 300000,
+      joinedAt: (Date.now() - 300000).toString(),
       isHost: true,
     },
   ])
@@ -32,7 +32,7 @@ export function RealTimeDemo() {
       avatar: ["🎵", "🌙", "✨", "🔥", "💫"][Math.floor(Math.random() * 5)],
       vibe: ["chill", "energetic", "dreamy", "excited"][Math.floor(Math.random() * 4)],
       lastReaction: ["🔥", "💫", "✨", "💜"][Math.floor(Math.random() * 4)],
-      joinedAt: Date.now(),
+      joinedAt: Date.now().toString(),
       isHost: false,
     }
 
@@ -65,7 +65,7 @@ export function RealTimeDemo() {
         </p>
       </Card>
 
-      <ConnectionIndicators users={users} currentUser="Jordan" roomId="DEMO123" onUserUpdate={setUsers} />
+      <RealConnectionIndicators users={users} currentUser="Jordan" roomId="DEMO123" onUserUpdate={setUsers} />
     </div>
   )
 }

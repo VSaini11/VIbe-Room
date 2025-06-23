@@ -6,7 +6,7 @@ import { EnhancedMusicPlayer } from "@/components/enhanced-music-player"
 import { EnhancedReactionSystem } from "@/components/enhanced-reaction-system"
 import { VibeIntensityMeter } from "@/components/vibe-intensity-meter"
 import { ThoughtChat } from "@/components/thought-chat"
-import { ConnectionIndicators } from "@/components/connection-indicators"
+import { RealConnectionIndicators } from "@/components/connection-indicators"
 import { RoomHeader } from "@/components/room-header"
 import { VibeWaveform } from "@/components/vibe-waveform"
 
@@ -166,7 +166,7 @@ export function VibeRoom({ roomId, userName, onLeaveRoom }: VibeRoomProps) {
 
         <div className="space-y-4">
           <VibeIntensityMeter reactions={reactions} userCount={users.length} />
-          <ConnectionIndicators users={users} currentUser={userName} roomId={roomId} />
+          <RealConnectionIndicators currentUser={userName} roomId={roomId} />
           <ThoughtChat roomId={roomId} userName={userName} />
         </div>
       </div>
